@@ -1,6 +1,7 @@
 import os
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, url_for
 from flask_cors import CORS
+from utils import APIException, generate_sitemap
 from datastructures import FamilyStructure
 
 app = Flask(__name__)
@@ -9,45 +10,49 @@ CORS(app)
 
 jackson_family = FamilyStructure("Jackson")
 
-@app.errorhandler(Exception)
+@app.errorhandler(APIException)
 def handle_invalid_usage(error):
-    response = jsonify({"message": str(error)})
-    response.status_code = error.code if isinstance(error, APIException) else 500
-    return response
+    return jsonify(error.to_dict()), error.status_code
 
 @app.route('/')
 def sitemap():
-    return "Sitemap here"
+    return generate_sitemap(app)
 
 @app.route('/members', methods=['GET'])
-def get_members():
+def handle_hello():
     members = jackson_family.get_all_members()
     return jsonify(members), 200
 
 @app.route('/member/<int:id>', methods=['GET'])
-def get_member(id):
+def get_by_id(id):
     member = jackson_family.get_member(id)
-    if not member:
+    if member is None:
         return jsonify({"msg": "Member not found"}), 404
     return jsonify(member), 200
 
 @app.route('/member', methods=['POST'])
 def add_member():
-    body = request.get_json() 
-    if not body or not body.get("first_name") or not body.get("age") or not body.get("lucky_numbers"):
+    body = request.get_json()
+    print(body)
+    if not body:
         return jsonify({"msg": "Invalid input"}), 400
+
     new_member = {
-        "first_name": body["first_name"],
-        "age": body["age"],
-        "lucky_numbers": body["lucky_numbers"],
+        "first_name": body.get("first_name"),
+        "age": body.get("age"),
+        "lucky_numbers": body.get("lucky_numbers"),
     }
-    added_member = jackson_family.add_member(new_member)
-    return jsonify(added_member), 200
+
+    if "id" in body:
+        new_member["id"] = body.get("id")
+
+    all_members = jackson_family.add_member(new_member)
+    return jsonify({"msg": "Person Added", "members": all_members}), 200
 
 @app.route('/member/<int:id>', methods=['DELETE'])
-def delete_member(id):
-    success = jackson_family.delete_member(id)
-    if not success:
+def delete_person(id):
+    result = jackson_family.delete_member(id)
+    if result[1] == 404:
         return jsonify({"msg": "Member not found"}), 404
     return jsonify({"done": True}), 200
 
